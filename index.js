@@ -1,4 +1,5 @@
 const fs = require('fs');
+const https = require("https");
 const parse = require('csv-parse');
 const stringify = require('csv-stringify');
 const lighthouse = require('lighthouse');
@@ -27,6 +28,7 @@ const createRecords = async input => {
             'region': input[i].region,
             'url': input[i].uri,
             'version': input[i].version,
+            'ecommerce': input[i].ecommerce,
             'title': input[i].title,
             'performance': result.lhr.categories.performance.score ? (result.lhr.categories.performance.score * 100).toFixed(0) : 'NA',
             'accessibility': result.lhr.categories.accessibility.score ? (result.lhr.categories.accessibility.score * 100).toFixed(0) : 'NA',
@@ -54,13 +56,29 @@ const createRecords = async input => {
 const crawlCallback = (error, res, done) => {
     if (error) {
         console.log(error);
+        done();
     } else {
         const $ = res.$;
         res.options.title = replaceSpecialCharacters($('title').text());
         res.options.version = replaceSpecialCharacters($('meta[name="Generator"]').attr('content'));
-        input.push(res.options);
+
+        https.get(
+            res.options.uri2,
+            function (response) {
+                const { statusCode } = response;
+                if (statusCode == 404) {
+                    res.options.ecommerce = "sitefinity ecommerce not found";
+                }
+                if (statusCode == 500) {
+                    res.options.ecommerce = "sitefinity ecommerce installed";
+                }
+                if (statusCode == 200) {
+                    res.options.ecommerce = "sitefinity ecommerce active";
+                }
+                input.push(res.options);
+                done();
+            });
     }
-    done();
 };
 
 const crawl = new crawler({
@@ -82,7 +100,9 @@ const parser = parse(
                 'salesperson': row.salesperson,
                 'region': row.region,
                 'uri': row.url,
+                'uri2': row.url + '/sitefinity/public/services/ecommerce/order/cartorder.svc/',
                 'version': '',
+                'ecommerce': '',
                 'title': '',
                 'performance': '',
                 'accessibility': '',
